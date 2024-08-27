@@ -1,2 +1,5 @@
-# cataplot
-Python/Qt-based GUI time series data plotting tool
+# CataPlot
+
+A GUI-based time series data plotting tool, written using Python and PySide6.
+
+![CataPlot](doc/images/cataplot_logo2_sm.png)
