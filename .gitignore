@@ -1,3 +1,10 @@
+# Cataplot's config files
+cataplot_config*.json
+
+# Poetry's lock file.  We may add this back later, but for now, we don't want to
+# maintain strict dependencies.
+poetry.lock
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
