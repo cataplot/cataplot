@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "cataplot"
+version = "0.1.0"
+description = ""
+authors = ["sefx <35553438+sefx@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+sqlalchemy = "^2.0.4"
+mysqlclient = "^2.1.1"
+mariadb = "^1.1.6"
+pyside6 = "^6.7.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
