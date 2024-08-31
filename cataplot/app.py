@@ -1,8 +1,8 @@
 """
 cataplot main entry point
 """
-
 import sys
+import time
 
 # pylint: disable=no-name-in-module
 from PySide6.QtCore import Qt, QEvent
@@ -22,6 +22,17 @@ from . import resources_rc  # pylint: disable=unused-import
 
 from . import treeview
 
+
+def long_running_cmd(_args, progress_signal):
+    """
+    Simulates a long-running command that reports progress through a signal.
+    """
+    for i in range(20):
+        time.sleep(0.1)
+        progress_signal.emit(i + 1)
+    # result_signal.emit("completed", [])
+    return "sub-command", ["Result 1", "Result 2", "Result 3"]
+
 class MainWindow(QMainWindow):
     def __init__(self, ui_filename, parent=None):
         super().__init__(parent)
@@ -30,13 +41,7 @@ class MainWindow(QMainWindow):
         # Initialize the command palette
         self.command_palette = CommandPalette(self)
 
-        # Set some example commands
-        self.all_commands = [
-            "Open File", "Save File", "Close Window", "Exit",
-            "Find", "Replace", "Go to Line", "Run", "Debug", "Settings",
-            "Help", "Add Plot Item",
-        ]
-        self.command_palette.set_commands(self.all_commands)
+        self.command_palette.add_command("Long-running command", long_running_cmd)
 
         # Add the command palette to the main window
         self.command_palette.setVisible(False)
@@ -53,7 +58,6 @@ class MainWindow(QMainWindow):
         elif ((event.type() == QEvent.KeyPress) and
               (event.key() == Qt.Key_P) and
               (event.modifiers() & Qt.ControlModifier)):
-            self.command_palette.set_commands(self.all_commands)
             self.command_palette.show()
             return True
         return super().eventFilter(obj, event)
