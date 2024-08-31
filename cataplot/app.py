@@ -31,11 +31,12 @@ class MainWindow(QMainWindow):
         self.command_palette = CommandPalette(self)
 
         # Set some example commands
-        self.command_palette.set_commands([
+        self.all_commands = [
             "Open File", "Save File", "Close Window", "Exit",
             "Find", "Replace", "Go to Line", "Run", "Debug", "Settings",
             "Help", "Add Plot Item",
-        ])
+        ]
+        self.command_palette.set_commands(self.all_commands)
 
         # Add the command palette to the main window
         self.command_palette.setVisible(False)
@@ -52,8 +53,8 @@ class MainWindow(QMainWindow):
         elif ((event.type() == QEvent.KeyPress) and
               (event.key() == Qt.Key_P) and
               (event.modifiers() & Qt.ControlModifier)):
-            # self.show_command_palette()
-            self.command_palette.xshow()
+            self.command_palette.set_commands(self.all_commands)
+            self.command_palette.show()
             return True
         return super().eventFilter(obj, event)
 
