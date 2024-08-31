@@ -23,15 +23,18 @@ from . import resources_rc  # pylint: disable=unused-import
 from . import treeview
 
 
-def long_running_cmd(_args, progress_signal):
+def long_running_cmd(args, progress_signal):
     """
     Simulates a long-running command that reports progress through a signal.
     """
-    for i in range(20):
-        time.sleep(0.1)
-        progress_signal.emit(i + 1)
-    # result_signal.emit("completed", [])
-    return "sub-command", ["Result 1", "Result 2", "Result 3"]
+    print(f'long_running_cmd({args})')
+    if len(args) == 1:
+        for i in range(5):
+            time.sleep(0.1)
+            progress_signal.emit(i + 1)
+        return "sub-command", ["Result 1", "Result 2", "Result 3"]
+
+    return "completed", []
 
 class MainWindow(QMainWindow):
     def __init__(self, ui_filename, parent=None):
