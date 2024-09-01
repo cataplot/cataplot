@@ -177,8 +177,21 @@ class CommandPalette(QWidget):
         self.run_chosen_item()
 
     def run_chosen_item(self):
+        print(f'run_chosen_item: {self.breadcrumbs}')
+        print(f'mru: {self.commands_mru}')
         # Get the command function from the commands dictionary
         cmd_name = self.breadcrumbs[0]
+
+        # Attempt to load the most recently used breadcrumbs for the command. We
+        # consume the mru item to avoid the case where the user uses backspace
+        # to go_back() to the previous command which uses the mru again,
+        # preventing them from accessing the top-level command list.
+        if len(self.breadcrumbs) == 1:
+            try:
+                self.breadcrumbs = list(self.commands_mru.pop(cmd_name))
+            except KeyError:
+                pass
+            print(f'using mru: {cmd_name}: {self.breadcrumbs}')
 
         command_fn, kwargs = self.commands[cmd_name]
         self.archive_worker()
@@ -224,6 +237,13 @@ class CommandPalette(QWidget):
             self.command_model.setStringList(self.current_items)
             self.command_list.setCurrentIndex(self.command_model.index(0, 0))
         else:
+            # The command has completed.  Hide the palette.
+
+            # Save the command and its arguments to the MRU list.  -1 to remove
+            # the last breadcrumb, which the user will select again if this
+            # command is run.
+            print(f'setting mru: {self.breadcrumbs[:-1]}')
+            self.commands_mru[self.breadcrumbs[0]] = self.breadcrumbs[:-1]
             self.hide()
 
     def add_command(self, command_name:str, command_fn:callable, /, **kwargs):
