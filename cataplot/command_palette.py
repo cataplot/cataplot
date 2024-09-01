@@ -37,7 +37,7 @@ class Worker(QObject):
         super().__init__()
         self.executor = concurrent.futures.ThreadPoolExecutor()
         self.command_fn = None
-        self.command_args = None
+        self.command_args = []
 
     def start_task(self):
         """
@@ -54,7 +54,13 @@ class Worker(QObject):
         """
         self.progress.emit(100)
         status, results = future.result()
-        print(f'future.result(): "{status}", {results}')
+        print(f'task_finished: status:{status}, results:{results}')
+
+        # Reset the command args and function if the command is completed
+        if status == 'completed':
+            self.command_args = []
+            self.command_fn = None
+
         self.result.emit(status, results)
 
 class CommandPalette(QWidget):
@@ -82,15 +88,21 @@ class CommandPalette(QWidget):
         self.command_model = QStringListModel()
         self.command_list.setModel(self.command_model)
 
-        # Command list for filtering.  key: command name, value: command function
+        # Command list for filtering.  key: command name, value: command fn
         self.commands = {}
-        self.selected_command = None
+
+        # Most recently used commands and their arguments.  key: command name,
+        # value: command arguments
+        self.commands_mru = {}
+
+        self.current_items = []
+        self.chosen_item = None
 
         # Connect the input field to the filtering mechanism
         self.command_input.textChanged.connect(self.filter_commands)
 
         # Handle command execution when an item is selected
-        self.command_list.clicked.connect(self.execute_command)
+        self.command_list.clicked.connect(self.execute_item)
 
         # Initialize the worker
         self.worker = Worker()
@@ -100,7 +112,12 @@ class CommandPalette(QWidget):
         self.setFixedSize(400, 300)
 
     def filter_commands(self, text):
-        filtered = menu_filter.filter_list(text, self.commands)
+        print(f"filter_commands: {text}")
+        print(self.commands)
+        print(self.current_items)
+        print(self.command_model.stringList())
+        # filtered = menu_filter.filter_list(text, self.commands)
+        filtered = menu_filter.filter_list(text, self.current_items)
 
         # Update the model with the filtered commands
         self.command_model.setStringList(filtered)
@@ -109,23 +126,23 @@ class CommandPalette(QWidget):
         if filtered:
             self.command_list.setCurrentIndex(self.command_model.index(0, 0))
 
-    def execute_command(self, index):
+    def execute_item(self, index):
         """
         User has selected a command from the list (by clicking or pressing
         Enter). Execute the selected command.
         """
         # Get the selected command
-        selected_command = self.command_model.data(index, Qt.DisplayRole)
+        self.chosen_item = self.command_model.data(index, Qt.DisplayRole)
+        if self.chosen_item is None:
+            return
 
-        # Store the selected command so that it can be restored after the
-        # command has finished executing.
-        self.selected_command = selected_command
+        self.command_input.clear()
+        self.worker.command_args.append(self.chosen_item)
 
-        print(f"Executing command: {selected_command}")
-        # self.setVisible(False)
+        print(f"palette choice: {self.chosen_item}")
 
         # Get the command function from the commands dictionary
-        command_fn = self.commands[selected_command]
+        command_fn = self.commands[self.worker.command_args[0]]
 
         # Set the command function in the worker
         self.worker.command_fn = command_fn
@@ -139,29 +156,28 @@ class CommandPalette(QWidget):
         """
         # Update the command list with the progress spinner
         spinner = ["", ".", "..", "..."]
-        progress_text = f"{spinner[value % 4]}"
+        progress_text = f"{self.chosen_item} {spinner[value % 4]}"
         self.command_model.setData(self.command_list.currentIndex(), progress_text)
-
-        # # If the command has finished, show the command list again
-        # if value == 100:
-        #     print("Command finished")
-        #     self.command_model.setData(self.command_list.currentIndex(), self.selected_command)
 
     def worker_finished(self, status, results):
         """
         Update the palette with the results of the command that has finished
         executing.
         """
-        print(f'status: "{status}", results: {results}')
+        print(f'worker_finished: status:{status}, results: {results}')
+
+        # Remove the spinner dots from the current item
+        self.command_model.setData(self.command_list.currentIndex(), self.chosen_item)
+
         if status == 'sub-command':
             # Set commands to the results of the sub-command
-            self.commands = {}
-            for result in results:
-                self.commands[result] = lambda _args, _prog_sig: ('completed', [])
-            self.command_model.setStringList(self.commands)
+            self.current_items = results
+            self.command_model.setStringList(self.current_items)
             self.command_list.setCurrentIndex(self.command_model.index(0, 0))
+        else:
+            self.hide()
 
-    def add_command(self, command_name, command_fn):
+    def add_command(self, command_name:str, command_fn:callable):
         """
         Add a command to the command palette.
 
@@ -171,15 +187,16 @@ class CommandPalette(QWidget):
                 selected.
         """
         self.commands[command_name] = command_fn
-        self.command_model.setStringList(self.commands)
 
-    # def set_commands(self, commands):
-    #     # Store all commands for filtering
-    #     self.commands = commands
-    #     # Initially show all commands
-    #     self.command_model.setStringList(self.commands)
+    def set_commands(self, commands:dict):
+        """
+        Sets commands for the command palette to the given dictionary.
+        """
+        # Store all commands for filtering
+        self.commands = commands
 
     def move_selection_up(self):
+        print("move_selection_up")
         current_index = self.command_list.currentIndex()
         if current_index.row() > 0:
             self.command_list.setCurrentIndex(
@@ -187,6 +204,7 @@ class CommandPalette(QWidget):
                 )
 
     def move_selection_down(self):
+        print("move_selection_down")
         current_index = self.command_list.currentIndex()
         if current_index.row() < self.command_model.rowCount() - 1:
             self.command_list.setCurrentIndex(
@@ -196,7 +214,7 @@ class CommandPalette(QWidget):
     def keyPressEvent(self, event):
         # Hide the palette if the Escape key is pressed
         if event.key() == Qt.Key_Escape:
-            self.setVisible(False)
+            self.hide()
         # If the Up key is pressed, move the selection up
         elif event.key() == Qt.Key_Up:
             self.move_selection_up()
@@ -205,8 +223,8 @@ class CommandPalette(QWidget):
             self.move_selection_down()
         # If the Enter key is pressed, execute the selected command and close the palette
         elif event.key() == Qt.Key_Return:
-            self.execute_command(self.command_list.currentIndex())
-
+            index = self.command_list.currentIndex()
+            self.execute_item(index)
         # If ctrl+N is pressed, move the selection down
         elif event.key() == Qt.Key_N and event.modifiers() & Qt.ControlModifier:
             self.move_selection_down()
@@ -216,9 +234,23 @@ class CommandPalette(QWidget):
         else:
             super().keyPressEvent(event)
 
+    def hide(self):
+        print("palette hide")
+
+        # Reset the command list
+        self.command_model.setStringList(self.commands)
+        self.worker.command_args = []
+        self.setVisible(False)
+
     def show(self):
+        print("palette show")
+
         # Clear the command input field
         self.command_input.clear()
+
+        # Populate current items from commands
+        self.current_items = self.commands.keys()
+        self.command_model.setStringList(self.current_items)
 
         # Highlight the first item in the list
         if self.command_model.rowCount() > 0:
