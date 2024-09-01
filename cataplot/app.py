@@ -55,7 +55,6 @@ class MainWindow(QMainWindow):
 
         # Initialize the command palette
         self.command_palette = CommandPalette(self)
-
         self.command_palette.add_command("Slow command", dummy_command, delay=3.0)
         self.command_palette.add_command("Fast command", dummy_command, delay=0.5)
 

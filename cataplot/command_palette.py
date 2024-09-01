@@ -7,20 +7,35 @@ applications. The command palette can be shown by pressing a keyboard shortcut
 (controlled by the application), and hidden by pressing the Escape key.
 
 This palette implementation is designed to support commands that don't complete
-immediately.  In such cases, the palette will show a spinner (in the form ., ..,
-... cycling in the command list) to indicate that the command is still running.
+immediately.  In such cases, the palette will show a spinner (cycling dots)
+while the command is running.
 
 In order to keep the user interface responsive, commands are executed in a
-separate thread.  This is done using the `concurrent.futures` module, which
-provides a high-level interface for asynchronously executing functions in
-separate threads.
+separate QThread.
 
-The CommandPalette class provides methods for registering commands.
+The CommandPalette class provides methods for registering commands:
+    - add_command(command_name, command_fn, **kwargs)
+    - set_commands(commands)
 
+It is assumed that the supplied command functions take the following arguments:
+    - breadcrumbs: A list of strings representing the current command hierarchy,
+      for nested commands.
+    - progress: A signal(int) that can optionally be periodically emitted by the
+      work function to update the command palette with the progress of the
+      command.
+    - **kwargs: Additional keyword arguments that are passed to the command
+      function.  The command is responsible for accepting the same keyword
+      arguments that were specified when the command was registered.
+
+The command function should return a tuple of two values:
+    - A string representing the status of the command.  This can be used to
+      determine whether the command has completed, or if it has returned
+      sub-commands.  Possible values are "sub-command" and "completed".
+    - If status is "sub-command", a list of strings representing the
+      sub-commands.
 """
-
 # pylint: disable=no-name-in-module
-from PySide6.QtCore import Qt, QObject, QStringListModel, Signal, QEvent, QThread
+from PySide6.QtCore import Qt, QStringListModel, Signal, QEvent, QThread
 from PySide6.QtWidgets import (
     QLineEdit, QListView, QVBoxLayout, QWidget, QAbstractItemView,
     QLabel
@@ -28,8 +43,11 @@ from PySide6.QtWidgets import (
 
 from . import menu_filter
 
-
 class Worker(QThread):
+    """
+    Worker thread that executes a command function and emits signals to update
+    the command palette with the progress of the command.
+    """
     progress = Signal(int)
     result = Signal(str, list)
 
@@ -38,15 +56,64 @@ class Worker(QThread):
         self.cmd_fn = cmd_fn
         self.kwargs = kwargs
         self.breadcrumbs = breadcrumbs
+        # Flag that indicates whether we should emit signals when the work
+        # function completes.  Note that there is currently no mechanism to
+        # interrupt a running command.
         self.cancelled = False
 
     def run(self):
+        """
+        Runs the command function in a separate thread.
+        """
         status, result = self.cmd_fn(self.breadcrumbs, self.progress, **self.kwargs)
         if not self.cancelled:
             self.progress.emit(100)
             self.result.emit(status, result)
 
 class CommandPalette(QWidget):
+    """
+    Command palette widget that can be used to execute commands in the
+    application. The command palette is a searchable list of commands that can
+    be executed by selecting them from the list. The palette can be shown by
+    pressing a keyboard shortcut, and hidden by pressing the Escape key.
+
+    Example usage:
+    ```
+    def dummy_command(breadcrumbs, progress_signal, delay:float=0):
+        # Simulate a long-running command that reports progress through a signal.
+        if len(breadcrumbs) == 1:
+            for i in range(int(delay / 0.1)):
+                time.sleep(0.1)
+                progress_signal.emit(i + 1)
+            return "sub-command", ["foos", "bars", "bazes"]
+
+        if len(breadcrumbs) == 2:
+            if breadcrumbs[1] == "foos":
+                return "sub-command", ["foo1", "foo2", "foo3"]
+            if breadcrumbs[1] == "bars":
+                return "sub-command", ["bar1", "bar2", "bar3"]
+            if breadcrumbs[1] == "bazes":
+                return "sub-command", ["baz1", "baz2", "baz3"]
+
+        return "completed", []
+
+    # In the context of a QMainWindow:
+    self.command_palette = CommandPalette(self)
+    self.command_palette.add_command("Slow command", dummy_command, delay=3.0)
+    self.command_palette.add_command("Fast command", dummy_command, delay=0.5)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress and event.key() == Qt.Key_Escape:
+            self.command_palette.hide()
+            return True
+        if ((event.type() == QEvent.KeyPress) and
+              (event.key() == Qt.Key_P) and
+              (event.modifiers() & Qt.ControlModifier)):
+            self.command_palette.show()
+            return True
+        return super().eventFilter(obj, event)
+    ```
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -57,7 +124,7 @@ class CommandPalette(QWidget):
 
         # Create a text input field for command search
         self.command_input = QLineEdit(self)
-        self.command_input.setPlaceholderText("Type a command...")
+        self.command_input.setPlaceholderText("Enter command...")
 
         # Create a list view to display command suggestions
         self.command_list = QListView(self)
@@ -99,11 +166,14 @@ class CommandPalette(QWidget):
 
         # Initialize the worker
         self.worker = None
+
+        # References to old workers that are still running.  These can't be GC'd
+        # until they are finished, or the application will crash.
         self.old_workers = []
-        # self.worker = Worker()
+
         # FIXME: make signal names consistent with method names
-        # self.worker.progress.connect(self.worker_progress)
-        # self.worker.result.connect(self.worker_finished)
+        # self.worker.progress.connect(self.handle_progress_signal)
+        # self.worker.result.connect(self.handle_result_signal)
 
         self.setFixedSize(400, 300)
 
@@ -190,24 +260,22 @@ class CommandPalette(QWidget):
                 self.old_workers.remove(worker)
 
         self.worker = Worker(command_fn, kwargs, self.breadcrumbs)
-        self.worker.progress.connect(self.worker_progress)
-        self.worker.result.connect(self.worker_finished)
+        self.worker.progress.connect(self.handle_progress_signal)
+        self.worker.result.connect(self.handle_result_signal)
 
         # Start the worker thread
         self.worker.start()
 
-    def worker_progress(self, value):
+    def handle_progress_signal(self, value):
         """
         Update the palette with the progress of the currently running command.
         """
         # Update the command list with the progress spinner
         spinner = ["", ".", "..", "..."]
-        # progress_text = f"{self.chosen_item} {spinner[value % 4]}"
         progress_text = f"{spinner[value % 4]}"
-        # self.command_model.setData(self.command_list.currentIndex(), progress_text)
         self.bc_label.setText(progress_text)
 
-    def worker_finished(self, status, results):
+    def handle_result_signal(self, status, results):
         """
         Update the palette with the results of the command that has finished
         executing.
@@ -235,9 +303,13 @@ class CommandPalette(QWidget):
         Add a command to the command palette.
 
         Args:
-            command_name (str): The name of the command.
-            command_fn (callable): The function to execute when the command is
+            - command_name (str): The name of the command.
+            - command_fn (callable): The function to execute when the command is
                 selected.
+            - **kwargs: Additional keyword arguments that are passed to the
+              command function.  The command is responsible for accepting the
+              same keyword arguments that were specified when the command was
+              registered.
         """
         self.commands[command_name] = (command_fn, kwargs)
 
@@ -247,7 +319,7 @@ class CommandPalette(QWidget):
         
         The format of the dictionary is:
         {
-            "command_name": (command_fn, args, kwargs),
+            "command_name": (command_fn:callable, kwargs:dict),
             ...
         }
         """
@@ -278,23 +350,17 @@ class CommandPalette(QWidget):
         """
         Handles key press events for the command palette
         """
-        # Hide the palette if the Escape key is pressed
         if event.key() == Qt.Key_Escape:
             self.hide()
-        # If the Up key is pressed, move the selection up
         elif event.key() == Qt.Key_Up:
             self.move_selection_up()
-        # If the Down key is pressed, move the selection down
         elif event.key() == Qt.Key_Down:
             self.move_selection_down()
-        # If the Enter key is pressed, execute the selected command and close the palette
         elif event.key() == Qt.Key_Return:
             index = self.command_list.currentIndex()
             self.handle_item_chosen(index)
-        # If ctrl+N is pressed, move the selection down
         elif event.key() == Qt.Key_N and event.modifiers() & Qt.ControlModifier:
             self.move_selection_down()
-        # If ctrl+P is pressed, move the selection up
         elif event.key() == Qt.Key_P and event.modifiers() & Qt.ControlModifier:
             self.move_selection_up()
         else:
@@ -319,8 +385,8 @@ class CommandPalette(QWidget):
         # discard them when they are finished.
         if self.worker is not None:
             self.worker.cancelled = True
-            self.worker.progress.disconnect(self.worker_progress)
-            self.worker.result.disconnect(self.worker_finished)
+            self.worker.progress.disconnect(self.handle_progress_signal)
+            self.worker.result.disconnect(self.handle_result_signal)
             if self.worker.isRunning():
                 self.old_workers.append(self.worker)
             self.worker = None
