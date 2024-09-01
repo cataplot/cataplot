@@ -63,8 +63,8 @@ class MainWindow(QMainWindow):
         # Initialize the command palette
         self.command_palette = CommandPalette(self)
 
-        self.command_palette.add_command("Slow command", dummy_command, kwargs={"delay": 3})
-        self.command_palette.add_command("Fast command", dummy_command, kwargs={"delay": .5})
+        self.command_palette.add_command("Slow command", dummy_command, kwargs={"delay": 1})
+        self.command_palette.add_command("Fast command", dummy_command, kwargs={"delay": 1})
 
         # Add the command palette to the main window
         self.command_palette.setVisible(False)
@@ -78,11 +78,12 @@ class MainWindow(QMainWindow):
             self.command_palette.hide()
             return True
         # If ctrl+P is pressed, show the command palette
-        elif ((event.type() == QEvent.KeyPress) and
+        if ((event.type() == QEvent.KeyPress) and
               (event.key() == Qt.Key_P) and
               (event.modifiers() & Qt.ControlModifier)):
             self.command_palette.show()
             return True
+
         return super().eventFilter(obj, event)
 
 def main():

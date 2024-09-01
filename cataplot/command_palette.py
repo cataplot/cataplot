@@ -21,9 +21,10 @@ The CommandPalette class provides methods for registering commands.
 import concurrent.futures
 
 # pylint: disable=no-name-in-module
-from PySide6.QtCore import Qt, QObject, QStringListModel, Signal
+from PySide6.QtCore import Qt, QObject, QStringListModel, Signal, QEvent
 from PySide6.QtWidgets import (
-    QLineEdit, QListView, QVBoxLayout, QWidget, QAbstractItemView
+    QLineEdit, QListView, QVBoxLayout, QWidget, QAbstractItemView,
+    QLabel
 )
 
 from . import menu_filter
@@ -58,6 +59,7 @@ class Worker(QObject):
         """
         Start the task in a separate thread
         """
+        print(f'ctx: {self.command_fn}, {self.args}, {self.kwargs}, {self.breadcrumbs}')
         future = self.executor.submit(self.command_fn,
                                       self.args,
                                       self.kwargs,
@@ -89,6 +91,8 @@ class CommandPalette(QWidget):
         # Create a layout for the command palette
         layout = QVBoxLayout(self)
 
+        self.bc_label = QLabel(self)
+
         # Create a text input field for command search
         self.command_input = QLineEdit(self)
         self.command_input.setPlaceholderText("Type a command...")
@@ -100,6 +104,7 @@ class CommandPalette(QWidget):
         self.command_list.setSelectionMode(QAbstractItemView.SingleSelection)
 
         # Add widgets to layout
+        layout.addWidget(self.bc_label)
         layout.addWidget(self.command_input)
         layout.addWidget(self.command_list)
 
@@ -134,6 +139,38 @@ class CommandPalette(QWidget):
         self.worker.result.connect(self.worker_finished)
 
         self.setFixedSize(400, 300)
+
+        # Install a custom event filter on command_input so that we can catch
+        # the Backspace key.
+        self.command_input.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj == self.command_input and event.type() == QEvent.KeyPress:
+            if event.key() == Qt.Key_Backspace:
+                if self.command_input.text() == "" and self.command_input.cursorPosition() == 0:
+                    if len(self.worker.breadcrumbs) > 0:
+                        self.go_back()
+                        return True
+        return super().eventFilter(obj, event)
+
+    def go_back(self):
+        """
+        Go back to the previous breadcrumb.  Update the bc label and restart the
+        worker at the new breadcrumb.
+        """
+        print("go_back")
+        # print(self.worker.breadcrumbs)
+        self.worker.breadcrumbs.pop()
+        if len(self.worker.breadcrumbs) == 0:
+            # We just deleted the top-level breadcrumb, which is the initial
+            # command name.  So just show the initial command list.
+            self.show()
+            return
+
+        # Update the breadcrumb label and restart the worker at the previous
+        # level.
+        self.bc_label.setText(" > ".join(self.worker.breadcrumbs))
+        self.worker.start_task()
 
     def filter_commands(self, text):
         print(f"filter_commands: {text}")
@@ -182,8 +219,10 @@ class CommandPalette(QWidget):
         """
         # Update the command list with the progress spinner
         spinner = ["", ".", "..", "..."]
-        progress_text = f"{self.chosen_item} {spinner[value % 4]}"
-        self.command_model.setData(self.command_list.currentIndex(), progress_text)
+        # progress_text = f"{self.chosen_item} {spinner[value % 4]}"
+        progress_text = f"{spinner[value % 4]}"
+        # self.command_model.setData(self.command_list.currentIndex(), progress_text)
+        self.bc_label.setText(progress_text)
 
     def worker_finished(self, status, results):
         """
@@ -193,7 +232,8 @@ class CommandPalette(QWidget):
         print(f'worker_finished: status:{status}, results: {results}')
 
         # Remove the spinner dots from the current item
-        self.command_model.setData(self.command_list.currentIndex(), self.chosen_item)
+        # self.command_model.setData(self.command_list.currentIndex(), self.chosen_item)
+        self.bc_label.setText(" > ".join(self.worker.breadcrumbs))
 
         if status == 'sub-command':
             # Set commands to the results of the sub-command
@@ -265,6 +305,15 @@ class CommandPalette(QWidget):
         # If ctrl+P is pressed, move the selection up
         elif event.key() == Qt.Key_P and event.modifiers() & Qt.ControlModifier:
             self.move_selection_up()
+        # If backspace is pressed when command input is empty, go back to the
+        # previous breadcrumb.
+        # elif event.key() == Qt.Key_Backspace:
+            # print("backspace")
+            # if self.command_input.text() == "Type a command..." and self.command_input.cursorPosition() == 0:
+            #     if len(self.worker.breadcrumbs) > 1:
+            #         # self.worker.breadcrumbs.pop()
+            #         # self.worker.start_task
+            #         print("backspace breadcrumbs")
         else:
             super().keyPressEvent(event)
 
@@ -282,6 +331,7 @@ class CommandPalette(QWidget):
 
         # Clear the command input field
         self.command_input.clear()
+        self.bc_label.setText("")
 
         # Populate current items from commands
         self.current_items = self.commands.keys()
