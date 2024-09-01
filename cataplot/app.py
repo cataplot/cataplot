@@ -23,27 +23,35 @@ from . import resources_rc  # pylint: disable=unused-import
 from . import treeview
 
 
-# def long_running_cmd(args, kwargs, breadcrumbs, progress_signal):
-def long_running_cmd(args, progress_signal):
+def dummy_command(args, kwargs, breadcrumbs, progress_signal):
     """
     Simulates a long-running command that reports progress through a signal.
+
     """
-    if len(args) == 1:
-        for i in range(10):
+    if kwargs is not None:
+        try:
+            delay = kwargs["delay"]
+        except KeyError:
+            delay = 0
+
+    print(f"dummy_command({args}, {kwargs}, {breadcrumbs} {progress_signal})")
+    if len(breadcrumbs) == 1:
+        print(f"delay: {delay}")
+        for i in range(int(delay / 0.1)):
             time.sleep(0.1)
             progress_signal.emit(i + 1)
         return "sub-command", ["foos", "bars", "bazes"]
 
-    if len(args) == 2:
-        if args[1] == "foos":
+    if len(breadcrumbs) == 2:
+        if breadcrumbs[1] == "foos":
             return "sub-command", ["foo1", "foo2", "foo3"]
-        if args[1] == "bars":
+        if breadcrumbs[1] == "bars":
             return "sub-command", ["bar1", "bar2", "bar3"]
-        if args[1] == "bazes":
+        if breadcrumbs[1] == "bazes":
             return "sub-command", ["baz1", "baz2", "baz3"]
 
-    if len(args) == 3:
-        print(f"{'.'.join(args)}()")  # e.g. "sub-command.sub-sub-command.foo1"
+    if len(breadcrumbs) == 3:
+        print(f"{'.'.join(breadcrumbs)}()")  # e.g. "sub-command.sub-sub-command.foo1"
 
     return "completed", []
 
@@ -55,8 +63,8 @@ class MainWindow(QMainWindow):
         # Initialize the command palette
         self.command_palette = CommandPalette(self)
 
-        self.command_palette.add_command("Long-running command", long_running_cmd)
-        self.command_palette.add_command("Long-running command", long_running_cmd)
+        self.command_palette.add_command("Slow command", dummy_command, kwargs={"delay": 3})
+        self.command_palette.add_command("Fast command", dummy_command, kwargs={"delay": .5})
 
         # Add the command palette to the main window
         self.command_palette.setVisible(False)

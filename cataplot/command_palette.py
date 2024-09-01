@@ -37,13 +37,31 @@ class Worker(QObject):
         super().__init__()
         self.executor = concurrent.futures.ThreadPoolExecutor()
         self.command_fn = None
-        self.command_args = []
+        self.args = []
+        self.kwargs = {}
+        self.breadcrumbs = []
+
+    def set_context(self, command_fn, args, kwargs, breadcrumb):
+        print(f'set_context: {command_fn}, {args}, {kwargs}, {breadcrumb}')
+        self.command_fn = command_fn
+        self.args = args
+        self.kwargs = kwargs
+        self.breadcrumbs.append(breadcrumb)
+
+    def clear_context(self):
+        self.command_fn = None
+        self.args = []
+        self.kwargs = {}
+        self.breadcrumbs = []
 
     def start_task(self):
         """
         Start the task in a separate thread
         """
-        future = self.executor.submit(self.command_fn, self.command_args,
+        future = self.executor.submit(self.command_fn,
+                                      self.args,
+                                      self.kwargs,
+                                      self.breadcrumbs,
                                       self.progress)
 
         future.add_done_callback(self.task_finished)
@@ -58,8 +76,9 @@ class Worker(QObject):
 
         # Reset the command args and function if the command is completed
         if status == 'completed':
-            self.command_args = []
-            self.command_fn = None
+            # self.args = []
+            # self.command_fn = None
+            self.clear_context()
 
         self.result.emit(status, results)
 
@@ -88,7 +107,7 @@ class CommandPalette(QWidget):
         self.command_model = QStringListModel()
         self.command_list.setModel(self.command_model)
 
-        # Command list for filtering.  key: command name, value: command fn
+        # Command list for filtering.  key: command name, values: (command_fn, args, kwargs)
         self.commands = {}
 
         # Most recently used commands and their arguments.  key: command name,
@@ -142,15 +161,17 @@ class CommandPalette(QWidget):
             return
 
         self.command_input.clear()
-        self.worker.command_args.append(self.chosen_item)
 
         print(f"palette choice: {self.chosen_item}")
 
         # Get the command function from the commands dictionary
-        command_fn = self.commands[self.worker.command_args[0]]
+        try:
+            cmd_name = self.worker.breadcrumbs[0]
+        except IndexError:
+            cmd_name = self.chosen_item
 
-        # Set the command function in the worker
-        self.worker.command_fn = command_fn
+        command_fn, args, kwargs = self.commands[cmd_name]
+        self.worker.set_context(command_fn, args, kwargs, self.chosen_item)
 
         # Start the worker thread
         self.worker.start_task()
@@ -182,7 +203,9 @@ class CommandPalette(QWidget):
         else:
             self.hide()
 
-    def add_command(self, command_name:str, command_fn:callable):
+    def add_command(self, command_name:str,
+                    command_fn:callable, /,
+                    args=None, kwargs=None):
         """
         Add a command to the command palette.
 
@@ -191,11 +214,17 @@ class CommandPalette(QWidget):
             command_fn (callable): The function to execute when the command is
                 selected.
         """
-        self.commands[command_name] = command_fn
+        self.commands[command_name] = (command_fn, args, kwargs)
 
     def set_commands(self, commands:dict):
         """
         Sets commands for the command palette to the given dictionary.
+        
+        The format of the dictionary is:
+        {
+            "command_name": (command_fn, args, kwargs),
+            ...
+        }
         """
         # Store all commands for filtering
         self.commands = commands
@@ -244,7 +273,8 @@ class CommandPalette(QWidget):
 
         # Reset the command list
         self.command_model.setStringList(self.commands)
-        self.worker.command_args = []
+        # self.worker.args = []
+        self.worker.clear_context()
         self.setVisible(False)
 
     def show(self):
