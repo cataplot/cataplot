@@ -45,8 +45,6 @@ class Worker(QThread):
         if not self.cancelled:
             self.progress.emit(100)
             self.result.emit(status, result)
-        else:
-            print("cancelled")
 
 class CommandPalette(QWidget):
     def __init__(self, parent=None):
@@ -127,11 +125,11 @@ class CommandPalette(QWidget):
         Go back to the previous breadcrumb.  Update the bc label and restart the
         worker at the new breadcrumb.
         """
-        print("go_back")
-
         # Clear all list items so that the user can't make a choice before we
         # update the list.
         self.command_model.setStringList([])
+
+        self.archive_worker()
 
         self.breadcrumbs.pop()
         if len(self.breadcrumbs) == 0:
@@ -146,11 +144,6 @@ class CommandPalette(QWidget):
         self.run_chosen_item()
 
     def filter_commands(self, text):
-        print(f"filter_commands: {text}")
-        # print(self.commands)
-        # print(self.current_items)
-        # print(self.command_model.stringList())
-
         filtered = menu_filter.filter_list(text, self.current_items)
 
         # Update the model with the filtered commands
@@ -170,15 +163,11 @@ class CommandPalette(QWidget):
         if self.chosen_item is None:
             return
 
-        print(f"palette choice: {self.chosen_item}")
-
         self.command_input.clear()
         self.breadcrumbs.append(self.chosen_item)
         self.run_chosen_item()
 
     def run_chosen_item(self):
-        print(f'run_chosen_item: {self.breadcrumbs}')
-        print(f'mru: {self.commands_mru}')
         # Get the command function from the commands dictionary
         cmd_name = self.breadcrumbs[0]
 
@@ -191,7 +180,6 @@ class CommandPalette(QWidget):
                 self.breadcrumbs = list(self.commands_mru.pop(cmd_name))
             except KeyError:
                 pass
-            print(f'using mru: {cmd_name}: {self.breadcrumbs}')
 
         command_fn, kwargs = self.commands[cmd_name]
         self.archive_worker()
@@ -199,7 +187,6 @@ class CommandPalette(QWidget):
         # Scrub any old workers that have finished before creating a new one
         for worker in self.old_workers:
             if worker.isFinished():
-                print("removing old worker")
                 self.old_workers.remove(worker)
 
         self.worker = Worker(command_fn, kwargs, self.breadcrumbs)
@@ -225,8 +212,6 @@ class CommandPalette(QWidget):
         Update the palette with the results of the command that has finished
         executing.
         """
-        print(f'worker_finished: status:{status}, results: {results}')
-
         # Remove the spinner dots from the current item
         # self.command_model.setData(self.command_list.currentIndex(), self.chosen_item)
         self.bc_label.setText(" > ".join(self.breadcrumbs))
@@ -242,7 +227,6 @@ class CommandPalette(QWidget):
             # Save the command and its arguments to the MRU list.  -1 to remove
             # the last breadcrumb, which the user will select again if this
             # command is run.
-            print(f'setting mru: {self.breadcrumbs[:-1]}')
             self.commands_mru[self.breadcrumbs[0]] = self.breadcrumbs[:-1]
             self.hide()
 
@@ -274,7 +258,6 @@ class CommandPalette(QWidget):
         """
         Moves the highlighted selection up in the command list
         """
-        print("move_selection_up")
         current_index = self.command_list.currentIndex()
         if current_index.row() > 0:
             self.command_list.setCurrentIndex(
@@ -285,7 +268,6 @@ class CommandPalette(QWidget):
         """
         Moves the highlighted selection down in the command list
         """
-        print("move_selection_down")
         current_index = self.command_list.currentIndex()
         if current_index.row() < self.command_model.rowCount() - 1:
             self.command_list.setCurrentIndex(
@@ -322,13 +304,8 @@ class CommandPalette(QWidget):
         """
         Hides the command palette
         """
-        print("palette hide")
-
-
         # Reset the command list
         self.command_model.setStringList(self.commands)
-        # self.worker.args = []
-        # self.worker.clear_context()
         self.breadcrumbs = []
         self.setVisible(False)
 
@@ -349,8 +326,9 @@ class CommandPalette(QWidget):
             self.worker = None
 
     def show(self):
-        print("palette show")
-
+        """
+        Shows the command palette
+        """
         # Clear the command input field
         self.command_input.clear()
         self.bc_label.setText("")

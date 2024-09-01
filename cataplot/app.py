@@ -28,7 +28,7 @@ def dummy_command(breadcrumbs, progress_signal, delay:float=0):
     Simulates a long-running command that reports progress through a signal.
 
     """
-    print(f"dummy_command({breadcrumbs}, {progress_signal}, delay={delay})")
+    print(f"dummy_command({breadcrumbs}, delay={delay})")
     if len(breadcrumbs) == 1:
         for i in range(int(delay / 0.1)):
             time.sleep(0.1)
@@ -43,8 +43,8 @@ def dummy_command(breadcrumbs, progress_signal, delay:float=0):
         if breadcrumbs[1] == "bazes":
             return "sub-command", ["baz1", "baz2", "baz3"]
 
-    if len(breadcrumbs) == 3:
-        print(f"{'.'.join(breadcrumbs)}()")  # e.g. "sub-command.sub-sub-command.foo1"
+    # if len(breadcrumbs) == 3:
+    #     print(f"{'.'.join(breadcrumbs)}()")  # e.g. "sub-command.sub-sub-command.foo1"
 
     return "completed", []
 
