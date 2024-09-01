@@ -23,20 +23,13 @@ from . import resources_rc  # pylint: disable=unused-import
 from . import treeview
 
 
-def dummy_command(args, kwargs, breadcrumbs, progress_signal):
+def dummy_command(breadcrumbs, progress_signal, delay:float=0):
     """
     Simulates a long-running command that reports progress through a signal.
 
     """
-    if kwargs is not None:
-        try:
-            delay = kwargs["delay"]
-        except KeyError:
-            delay = 0
-
-    print(f"dummy_command({args}, {kwargs}, {breadcrumbs} {progress_signal})")
+    print(f"dummy_command({breadcrumbs}, {progress_signal}, delay={delay})")
     if len(breadcrumbs) == 1:
-        print(f"delay: {delay}")
         for i in range(int(delay / 0.1)):
             time.sleep(0.1)
             progress_signal.emit(i + 1)
@@ -63,8 +56,8 @@ class MainWindow(QMainWindow):
         # Initialize the command palette
         self.command_palette = CommandPalette(self)
 
-        self.command_palette.add_command("Slow command", dummy_command, kwargs={"delay": 1})
-        self.command_palette.add_command("Fast command", dummy_command, kwargs={"delay": 1})
+        self.command_palette.add_command("Slow command", dummy_command, delay=3.0)
+        self.command_palette.add_command("Fast command", dummy_command, delay=0.5)
 
         # Add the command palette to the main window
         self.command_palette.setVisible(False)

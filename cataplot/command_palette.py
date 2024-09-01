@@ -18,10 +18,9 @@ separate threads.
 The CommandPalette class provides methods for registering commands.
 
 """
-import concurrent.futures
 
 # pylint: disable=no-name-in-module
-from PySide6.QtCore import Qt, QObject, QStringListModel, Signal, QEvent
+from PySide6.QtCore import Qt, QObject, QStringListModel, Signal, QEvent, QThread
 from PySide6.QtWidgets import (
     QLineEdit, QListView, QVBoxLayout, QWidget, QAbstractItemView,
     QLabel
@@ -30,59 +29,24 @@ from PySide6.QtWidgets import (
 from . import menu_filter
 
 
-class Worker(QObject):
+class Worker(QThread):
     progress = Signal(int)
     result = Signal(str, list)
 
-    def __init__(self):
+    def __init__(self, cmd_fn, kwargs, breadcrumbs):
         super().__init__()
-        self.executor = concurrent.futures.ThreadPoolExecutor()
-        self.command_fn = None
-        self.args = []
-        self.kwargs = {}
-        self.breadcrumbs = []
-
-    def set_context(self, command_fn, args, kwargs, breadcrumb):
-        print(f'set_context: {command_fn}, {args}, {kwargs}, {breadcrumb}')
-        self.command_fn = command_fn
-        self.args = args
+        self.cmd_fn = cmd_fn
         self.kwargs = kwargs
-        self.breadcrumbs.append(breadcrumb)
+        self.breadcrumbs = breadcrumbs
+        self.cancelled = False
 
-    def clear_context(self):
-        self.command_fn = None
-        self.args = []
-        self.kwargs = {}
-        self.breadcrumbs = []
-
-    def start_task(self):
-        """
-        Start the task in a separate thread
-        """
-        print(f'ctx: {self.command_fn}, {self.args}, {self.kwargs}, {self.breadcrumbs}')
-        future = self.executor.submit(self.command_fn,
-                                      self.args,
-                                      self.kwargs,
-                                      self.breadcrumbs,
-                                      self.progress)
-
-        future.add_done_callback(self.task_finished)
-
-    def task_finished(self, future):
-        """
-        Callback function that is called when the task is finished
-        """
-        self.progress.emit(100)
-        status, results = future.result()
-        print(f'task_finished: status:{status}, results:{results}')
-
-        # Reset the command args and function if the command is completed
-        if status == 'completed':
-            # self.args = []
-            # self.command_fn = None
-            self.clear_context()
-
-        self.result.emit(status, results)
+    def run(self):
+        status, result = self.cmd_fn(self.breadcrumbs, self.progress, **self.kwargs)
+        if not self.cancelled:
+            self.progress.emit(100)
+            self.result.emit(status, result)
+        else:
+            print("cancelled")
 
 class CommandPalette(QWidget):
     def __init__(self, parent=None):
@@ -119,6 +83,8 @@ class CommandPalette(QWidget):
         # value: command arguments
         self.commands_mru = {}
 
+        self.breadcrumbs = []
+
         # These are the items the palette is currently displaying.  They may
         # differ from the command list when commands return nested sub-commands.
         self.current_items = []
@@ -131,12 +97,15 @@ class CommandPalette(QWidget):
         self.command_input.textChanged.connect(self.filter_commands)
 
         # Handle command execution when an item is selected
-        self.command_list.clicked.connect(self.execute_item)
+        self.command_list.clicked.connect(self.handle_item_chosen)
 
         # Initialize the worker
-        self.worker = Worker()
-        self.worker.progress.connect(self.worker_progress)
-        self.worker.result.connect(self.worker_finished)
+        self.worker = None
+        self.old_workers = []
+        # self.worker = Worker()
+        # FIXME: make signal names consistent with method names
+        # self.worker.progress.connect(self.worker_progress)
+        # self.worker.result.connect(self.worker_finished)
 
         self.setFixedSize(400, 300)
 
@@ -148,7 +117,7 @@ class CommandPalette(QWidget):
         if obj == self.command_input and event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Backspace:
                 if self.command_input.text() == "" and self.command_input.cursorPosition() == 0:
-                    if len(self.worker.breadcrumbs) > 0:
+                    if len(self.breadcrumbs) > 0:
                         self.go_back()
                         return True
         return super().eventFilter(obj, event)
@@ -159,9 +128,13 @@ class CommandPalette(QWidget):
         worker at the new breadcrumb.
         """
         print("go_back")
-        # print(self.worker.breadcrumbs)
-        self.worker.breadcrumbs.pop()
-        if len(self.worker.breadcrumbs) == 0:
+
+        # Clear all list items so that the user can't make a choice before we
+        # update the list.
+        self.command_model.setStringList([])
+
+        self.breadcrumbs.pop()
+        if len(self.breadcrumbs) == 0:
             # We just deleted the top-level breadcrumb, which is the initial
             # command name.  So just show the initial command list.
             self.show()
@@ -169,8 +142,8 @@ class CommandPalette(QWidget):
 
         # Update the breadcrumb label and restart the worker at the previous
         # level.
-        self.bc_label.setText(" > ".join(self.worker.breadcrumbs))
-        self.worker.start_task()
+        self.bc_label.setText(" > ".join(self.breadcrumbs))
+        self.run_chosen_item()
 
     def filter_commands(self, text):
         print(f"filter_commands: {text}")
@@ -187,31 +160,41 @@ class CommandPalette(QWidget):
         if filtered:
             self.command_list.setCurrentIndex(self.command_model.index(0, 0))
 
-    def execute_item(self, index):
+    def handle_item_chosen(self, index):
         """
         User has selected a command from the list (by clicking or pressing
         Enter). Execute the selected command.
         """
-        # Get the selected command
+        # Get the text of the selected item using the supplied index
         self.chosen_item = self.command_model.data(index, Qt.DisplayRole)
         if self.chosen_item is None:
             return
 
-        self.command_input.clear()
-
         print(f"palette choice: {self.chosen_item}")
 
-        # Get the command function from the commands dictionary
-        try:
-            cmd_name = self.worker.breadcrumbs[0]
-        except IndexError:
-            cmd_name = self.chosen_item
+        self.command_input.clear()
+        self.breadcrumbs.append(self.chosen_item)
+        self.run_chosen_item()
 
-        command_fn, args, kwargs = self.commands[cmd_name]
-        self.worker.set_context(command_fn, args, kwargs, self.chosen_item)
+    def run_chosen_item(self):
+        # Get the command function from the commands dictionary
+        cmd_name = self.breadcrumbs[0]
+
+        command_fn, kwargs = self.commands[cmd_name]
+        self.archive_worker()
+
+        # Scrub any old workers that have finished before creating a new one
+        for worker in self.old_workers:
+            if worker.isFinished():
+                print("removing old worker")
+                self.old_workers.remove(worker)
+
+        self.worker = Worker(command_fn, kwargs, self.breadcrumbs)
+        self.worker.progress.connect(self.worker_progress)
+        self.worker.result.connect(self.worker_finished)
 
         # Start the worker thread
-        self.worker.start_task()
+        self.worker.start()
 
     def worker_progress(self, value):
         """
@@ -233,7 +216,7 @@ class CommandPalette(QWidget):
 
         # Remove the spinner dots from the current item
         # self.command_model.setData(self.command_list.currentIndex(), self.chosen_item)
-        self.bc_label.setText(" > ".join(self.worker.breadcrumbs))
+        self.bc_label.setText(" > ".join(self.breadcrumbs))
 
         if status == 'sub-command':
             # Set commands to the results of the sub-command
@@ -243,9 +226,7 @@ class CommandPalette(QWidget):
         else:
             self.hide()
 
-    def add_command(self, command_name:str,
-                    command_fn:callable, /,
-                    args=None, kwargs=None):
+    def add_command(self, command_name:str, command_fn:callable, /, **kwargs):
         """
         Add a command to the command palette.
 
@@ -254,7 +235,7 @@ class CommandPalette(QWidget):
             command_fn (callable): The function to execute when the command is
                 selected.
         """
-        self.commands[command_name] = (command_fn, args, kwargs)
+        self.commands[command_name] = (command_fn, kwargs)
 
     def set_commands(self, commands:dict):
         """
@@ -270,6 +251,9 @@ class CommandPalette(QWidget):
         self.commands = commands
 
     def move_selection_up(self):
+        """
+        Moves the highlighted selection up in the command list
+        """
         print("move_selection_up")
         current_index = self.command_list.currentIndex()
         if current_index.row() > 0:
@@ -278,6 +262,9 @@ class CommandPalette(QWidget):
                 )
 
     def move_selection_down(self):
+        """
+        Moves the highlighted selection down in the command list
+        """
         print("move_selection_down")
         current_index = self.command_list.currentIndex()
         if current_index.row() < self.command_model.rowCount() - 1:
@@ -286,6 +273,9 @@ class CommandPalette(QWidget):
                 )
 
     def keyPressEvent(self, event):
+        """
+        Handles key press events for the command palette
+        """
         # Hide the palette if the Escape key is pressed
         if event.key() == Qt.Key_Escape:
             self.hide()
@@ -298,33 +288,45 @@ class CommandPalette(QWidget):
         # If the Enter key is pressed, execute the selected command and close the palette
         elif event.key() == Qt.Key_Return:
             index = self.command_list.currentIndex()
-            self.execute_item(index)
+            self.handle_item_chosen(index)
         # If ctrl+N is pressed, move the selection down
         elif event.key() == Qt.Key_N and event.modifiers() & Qt.ControlModifier:
             self.move_selection_down()
         # If ctrl+P is pressed, move the selection up
         elif event.key() == Qt.Key_P and event.modifiers() & Qt.ControlModifier:
             self.move_selection_up()
-        # If backspace is pressed when command input is empty, go back to the
-        # previous breadcrumb.
-        # elif event.key() == Qt.Key_Backspace:
-            # print("backspace")
-            # if self.command_input.text() == "Type a command..." and self.command_input.cursorPosition() == 0:
-            #     if len(self.worker.breadcrumbs) > 1:
-            #         # self.worker.breadcrumbs.pop()
-            #         # self.worker.start_task
-            #         print("backspace breadcrumbs")
         else:
             super().keyPressEvent(event)
 
     def hide(self):
+        """
+        Hides the command palette
+        """
         print("palette hide")
+
 
         # Reset the command list
         self.command_model.setStringList(self.commands)
         # self.worker.args = []
-        self.worker.clear_context()
+        # self.worker.clear_context()
+        self.breadcrumbs = []
         self.setVisible(False)
+
+    def archive_worker(self):
+        """
+        Marks the current worker as finished and preserves a reference to it (to
+        be cleaned up later).
+        """
+        # NOTE: The application will crash if we throw away the reference to a
+        # running QThread.  So we keep a reference to the old worker threads and
+        # discard them when they are finished.
+        if self.worker is not None:
+            self.worker.cancelled = True
+            self.worker.progress.disconnect(self.worker_progress)
+            self.worker.result.disconnect(self.worker_finished)
+            if self.worker.isRunning():
+                self.old_workers.append(self.worker)
+            self.worker = None
 
     def show(self):
         print("palette show")
