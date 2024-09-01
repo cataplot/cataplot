@@ -95,7 +95,12 @@ class CommandPalette(QWidget):
         # value: command arguments
         self.commands_mru = {}
 
+        # These are the items the palette is currently displaying.  They may
+        # differ from the command list when commands return nested sub-commands.
         self.current_items = []
+
+        # A backup of the chosen item in the command list.  This is used to
+        # remove the spinner dots when the command is completed.
         self.chosen_item = None
 
         # Connect the input field to the filtering mechanism
@@ -113,10 +118,10 @@ class CommandPalette(QWidget):
 
     def filter_commands(self, text):
         print(f"filter_commands: {text}")
-        print(self.commands)
-        print(self.current_items)
-        print(self.command_model.stringList())
-        # filtered = menu_filter.filter_list(text, self.commands)
+        # print(self.commands)
+        # print(self.current_items)
+        # print(self.command_model.stringList())
+
         filtered = menu_filter.filter_list(text, self.current_items)
 
         # Update the model with the filtered commands
