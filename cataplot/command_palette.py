@@ -18,7 +18,9 @@ The CommandPalette class provides methods for registering commands:
     - set_commands(commands)
 
 It is assumed that the supplied command functions take the following arguments:
-    - breadcrumbs: A list of strings representing the current command hierarchy,
+    - app: A reference to the main application object.  This can be used to
+      access the cataplot API, e.g. app.get_providers().
+    - crumbs: A list of strings representing the current command hierarchy,
       for nested commands.
     - progress: A signal(int) that can optionally be periodically emitted by the
       work function to update the command palette with the progress of the
@@ -51,11 +53,12 @@ class Worker(QThread):
     progress = Signal(int)
     result = Signal(str, list)
 
-    def __init__(self, cmd_fn, kwargs, breadcrumbs):
+    def __init__(self, app, cmd_fn, kwargs, crumbs):
         super().__init__()
+        self.app = app
         self.cmd_fn = cmd_fn
         self.kwargs = kwargs
-        self.breadcrumbs = breadcrumbs
+        self.crumbs = crumbs
         # Flag that indicates whether we should emit signals when the work
         # function completes.  Note that there is currently no mechanism to
         # interrupt a running command.
@@ -65,7 +68,7 @@ class Worker(QThread):
         """
         Runs the command function in a separate thread.
         """
-        status, result = self.cmd_fn(self.breadcrumbs, self.progress, **self.kwargs)
+        status, result = self.cmd_fn(self.app, self.crumbs, self.progress, **self.kwargs)
         if not self.cancelled:
             self.progress.emit(100)
             self.result.emit(status, result)
@@ -79,20 +82,20 @@ class CommandPalette(QWidget):
 
     Example usage:
     ```
-    def dummy_command(breadcrumbs, progress_signal, delay:float=0):
+    def dummy_command(app, crumbs, progress_signal, delay:float=0):
         # Simulate a long-running command that reports progress through a signal.
-        if len(breadcrumbs) == 1:
+        if len(crumbs) == 1:
             for i in range(int(delay / 0.1)):
                 time.sleep(0.1)
                 progress_signal.emit(i + 1)
             return "sub-command", ["foos", "bars", "bazes"]
 
-        if len(breadcrumbs) == 2:
-            if breadcrumbs[1] == "foos":
+        if len(crumbs) == 2:
+            if crumbs[1] == "foos":
                 return "sub-command", ["foo1", "foo2", "foo3"]
-            if breadcrumbs[1] == "bars":
+            if crumbs[1] == "bars":
                 return "sub-command", ["bar1", "bar2", "bar3"]
-            if breadcrumbs[1] == "bazes":
+            if crumbs[1] == "bazes":
                 return "sub-command", ["baz1", "baz2", "baz3"]
 
         return "completed", []
@@ -148,7 +151,7 @@ class CommandPalette(QWidget):
         # value: command arguments
         self.commands_mru = {}
 
-        self.breadcrumbs = []
+        self.crumbs = []
 
         # These are the items the palette is currently displaying.  They may
         # differ from the command list when commands return nested sub-commands.
@@ -185,7 +188,7 @@ class CommandPalette(QWidget):
         if obj == self.command_input and event.type() == QEvent.KeyPress:
             if event.key() == Qt.Key_Backspace:
                 if self.command_input.text() == "" and self.command_input.cursorPosition() == 0:
-                    if len(self.breadcrumbs) > 0:
+                    if len(self.crumbs) > 0:
                         self.go_back()
                         return True
         return super().eventFilter(obj, event)
@@ -201,8 +204,8 @@ class CommandPalette(QWidget):
 
         self.archive_worker()
 
-        self.breadcrumbs.pop()
-        if len(self.breadcrumbs) == 0:
+        self.crumbs.pop()
+        if len(self.crumbs) == 0:
             # We just deleted the top-level breadcrumb, which is the initial
             # command name.  So just show the initial command list.
             self.show()
@@ -210,7 +213,7 @@ class CommandPalette(QWidget):
 
         # Update the breadcrumb label and restart the worker at the previous
         # level.
-        self.bc_label.setText(" > ".join(self.breadcrumbs))
+        self.bc_label.setText(" > ".join(self.crumbs))
         self.run_chosen_item()
 
     def filter_commands(self, text):
@@ -234,20 +237,20 @@ class CommandPalette(QWidget):
             return
 
         self.command_input.clear()
-        self.breadcrumbs.append(self.chosen_item)
+        self.crumbs.append(self.chosen_item)
         self.run_chosen_item()
 
     def run_chosen_item(self):
         # Get the command function from the commands dictionary
-        cmd_name = self.breadcrumbs[0]
+        cmd_name = self.crumbs[0]
 
-        # Attempt to load the most recently used breadcrumbs for the command. We
+        # Attempt to load the most recently used crumbs for the command. We
         # consume the mru item to avoid the case where the user uses backspace
         # to go_back() to the previous command which uses the mru again,
         # preventing them from accessing the top-level command list.
-        if len(self.breadcrumbs) == 1:
+        if len(self.crumbs) == 1:
             try:
-                self.breadcrumbs = list(self.commands_mru.pop(cmd_name))
+                self.crumbs = list(self.commands_mru.pop(cmd_name))
             except KeyError:
                 pass
 
@@ -259,7 +262,7 @@ class CommandPalette(QWidget):
             if worker.isFinished():
                 self.old_workers.remove(worker)
 
-        self.worker = Worker(command_fn, kwargs, self.breadcrumbs)
+        self.worker = Worker(self.parent(), command_fn, kwargs, self.crumbs)
         self.worker.progress.connect(self.handle_progress_signal)
         self.worker.result.connect(self.handle_result_signal)
 
@@ -282,7 +285,7 @@ class CommandPalette(QWidget):
         """
         # Remove the spinner dots from the current item
         # self.command_model.setData(self.command_list.currentIndex(), self.chosen_item)
-        self.bc_label.setText(" > ".join(self.breadcrumbs))
+        self.bc_label.setText(" > ".join(self.crumbs))
 
         if status == 'sub-command':
             # Set commands to the results of the sub-command
@@ -295,7 +298,7 @@ class CommandPalette(QWidget):
             # Save the command and its arguments to the MRU list.  -1 to remove
             # the last breadcrumb, which the user will select again if this
             # command is run.
-            self.commands_mru[self.breadcrumbs[0]] = self.breadcrumbs[:-1]
+            self.commands_mru[self.crumbs[0]] = self.crumbs[:-1]
             self.hide()
 
     def add_command(self, command_name:str, command_fn:callable, /, **kwargs):
@@ -372,7 +375,7 @@ class CommandPalette(QWidget):
         """
         # Reset the command list
         self.command_model.setStringList(self.commands)
-        self.breadcrumbs = []
+        self.crumbs = []
         self.setVisible(False)
 
     def archive_worker(self):

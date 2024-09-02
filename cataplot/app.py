@@ -1,6 +1,7 @@
 """
 cataplot main entry point
 """
+from dataclasses import dataclass
 import sys
 import time
 
@@ -23,30 +24,48 @@ from . import resources_rc  # pylint: disable=unused-import
 from . import treeview
 
 
-def dummy_command(breadcrumbs, progress_signal, delay:float=0):
+def dummy_command(_app, crumbs, progress_signal, delay:float=0):
     """
     Simulates a long-running command that reports progress through a signal.
 
     """
-    print(f"dummy_command({breadcrumbs}, delay={delay})")
-    if len(breadcrumbs) == 1:
+    print(f"dummy_command(app={_app}, {crumbs}, delay={delay})")
+    if len(crumbs) == 1:
         for i in range(int(delay / 0.1)):
             time.sleep(0.1)
             progress_signal.emit(i + 1)
         return "sub-command", ["foos", "bars", "bazes"]
 
-    if len(breadcrumbs) == 2:
-        if breadcrumbs[1] == "foos":
+    if len(crumbs) == 2:
+        if crumbs[1] == "foos":
             return "sub-command", ["foo1", "foo2", "foo3"]
-        if breadcrumbs[1] == "bars":
+        if crumbs[1] == "bars":
             return "sub-command", ["bar1", "bar2", "bar3"]
-        if breadcrumbs[1] == "bazes":
+        if crumbs[1] == "bazes":
             return "sub-command", ["baz1", "baz2", "baz3"]
 
-    # if len(breadcrumbs) == 3:
-    #     print(f"{'.'.join(breadcrumbs)}()")  # e.g. "sub-command.sub-sub-command.foo1"
+    # if len(crumbs) == 3:
+    #     print(f"{'.'.join(crumbs)}()")  # e.g. "sub-command.sub-sub-command.foo1"
 
     return "completed", []
+
+def cmd_add_item(app, crumbs, _progress_signal):
+    """
+    Adds an item to a plot
+    """
+    if len(crumbs) == 1:
+        # First menu level: sub-menus for each provider that's available in the
+        # application.
+        providers = app.get_providers()
+        return 'sub-command', [provider.name for provider in providers]
+
+
+@dataclass
+class Provider:
+    name: str
+    description: str
+    provider_type: str
+    cfg: dict
 
 class MainWindow(QMainWindow):
     def __init__(self, ui_filename, parent=None):
@@ -57,12 +76,24 @@ class MainWindow(QMainWindow):
         self.command_palette = CommandPalette(self)
         self.command_palette.add_command("Slow command", dummy_command, delay=3.0)
         self.command_palette.add_command("Fast command", dummy_command, delay=0.5)
+        self.command_palette.add_command("Add item", cmd_add_item)
 
         # Add the command palette to the main window
         self.command_palette.setVisible(False)
 
         # Install an event filter to detect clicks outside the command palette
         self.installEventFilter(self)
+
+        self.providers = [
+            Provider('Demo', 'Demo data provider', 'demo', {}),
+            Provider('SQL', 'SQL data provider', 'sql', {}),
+        ]
+
+    def get_providers(self):
+        """
+        Returns a list of available data providers.
+        """
+        return self.providers
 
     def eventFilter(self, obj, event):
         # If the Escape key is pressed, hide the command palette
