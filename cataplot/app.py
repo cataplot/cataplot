@@ -23,6 +23,8 @@ from . import resources_rc  # pylint: disable=unused-import
 
 from . import treeview
 
+from .providers import BaseProvider
+
 
 def dummy_command(_app, crumbs, progress_signal, delay:float=0):
     """
@@ -59,14 +61,6 @@ def cmd_add_item(app, crumbs, _progress_signal):
         providers = app.get_providers()
         return 'sub-command', [provider.name for provider in providers]
 
-
-@dataclass
-class Provider:
-    name: str
-    description: str
-    provider_type: str
-    cfg: dict
-
 class MainWindow(QMainWindow):
     def __init__(self, ui_filename, parent=None):
         super().__init__(parent)
@@ -84,10 +78,15 @@ class MainWindow(QMainWindow):
         # Install an event filter to detect clicks outside the command palette
         self.installEventFilter(self)
 
-        self.providers = [
-            Provider('Demo', 'Demo data provider', 'demo', {}),
-            Provider('SQL', 'SQL data provider', 'sql', {}),
-        ]
+        self.providers = []
+
+        print('providers', BaseProvider.__subclasses__())
+
+    def add_provider(self, provider):
+        """
+        Adds a provider to the list of available data providers.
+        """
+        self.providers.append(provider)
 
     def get_providers(self):
         """
