@@ -1,10 +1,10 @@
 """
-This module contains the DemoAdapter class.  It implements the BaseAdapter
+This module contains the DemoProvider class.  It implements the BaseProvider
 interface and provides simulated data for plotting.
 """
 from dataclasses import dataclass
 
-from .base import BaseAdapter
+from .base import BaseProvider
 
 
 from dataclasses import dataclass
@@ -88,9 +88,9 @@ SERVER_HOSTS = [
 ]
 
 
-class DemoAdapter(BaseAdapter):
+class DemoProvider(BaseProvider):
     """
-    Adapter that provides simulated data for plotting.
+    Provider of simulated data for plotting.
     """
     def __init__(self):
         super().__init__()

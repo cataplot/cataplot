@@ -1,12 +1,12 @@
 """
-Base class for adapters that provide data to be plotted.
+Base class for providers that provide data to be plotted.
 """
 
 from datetime import datetime
 
-class BaseAdapter:
+class BaseProvider:
     """
-    Base class for adapters that provide data to be plotted.
+    Base class for providers that provide data to be plotted.
     """
     def __init__(self):
         pass
@@ -31,7 +31,7 @@ class BaseAdapter:
         Returns a list of values between the start and end times from the
         specified plottable item.  Path must be type "item".
         """
-        # allow item to be a list of items so adapter subclass can efficiently
+        # allow item to be a list of items so provider subclass can efficiently
         # batch the request (e.g. in some databases, data items come from the
         # same row, so we can avoid getting the row more than once.  May not
         # matter if sql client isn't getting the entire row because they're
