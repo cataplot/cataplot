@@ -23,7 +23,8 @@ from . import resources_rc  # pylint: disable=unused-import
 
 from . import treeview
 
-from .providers import BaseProvider
+# from .providers import BaseProvider
+from . import provider_manager
 
 
 def dummy_command(_app, crumbs, progress_signal, delay:float=0):
@@ -80,7 +81,18 @@ class MainWindow(QMainWindow):
 
         self.providers = []
 
-        print('providers', BaseProvider.__subclasses__())
+        # print('providers', BaseProvider.__subclasses__())
+
+        self.provider_manager = provider_manager.ProviderManager(self)
+        # Make provider_manager modal to prevent user interaction with other
+        # windows while the manager is open.
+        # self.provider_manager.setWindowModality(Qt.ApplicationModal)
+        self.provider_manager.setWindowModality(Qt.WindowModal)
+
+        self.con_mgr_action.triggered.connect(self.handle_con_mgr_action)
+
+    def handle_con_mgr_action(self):
+        self.provider_manager.show()
 
     def add_provider(self, provider):
         """
