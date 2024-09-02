@@ -5,9 +5,6 @@ edit, and delete data providers, and test the connection settings for each
 provider.
 """
 
-import dataclasses
-import json
-import os
 import sys
 
 # pylint: disable=no-name-in-module
@@ -17,148 +14,93 @@ from PySide6.QtGui import QAction
 
 from .pyside_ui_loader import load_ui
 
-CFG_FILENAME = 'provider_config.json'
-DEFAULT_CFG = {'providers': []}
 
-@dataclasses.dataclass
-class Provider:
-    """Data provider"""
-    name: str
-    provider_type: str = ''
-    hostname: str = ''
-    username: str = ''
-    password: str = ''
-    port: int = 0
+class ListOfDictModel(QAbstractListModel):
+    """
+    Model for the table view.  Holds a list of dicts.  Each dict represents a
+    provider and has the following keys:
 
-def json_load_objhook(obj):
+        - name: str
+        - provider_type: str
+        - config: dict
+    
+    The keys in the config dict depend on the provider type.
     """
-    Called by json.load for each object loaded, if obj is a dict with key
-    'providers', replaces the value for that key with a list of Provider
-    instances.  It effectively allows us to load a list of objects (not just a
-    dict) from a json config file.
-    """
-    if isinstance(obj, dict):
-        if 'providers' in obj:
-            providers = []
-            for provider_dict in obj['providers']:
-                provider = Provider(**provider_dict)
-                providers.append(provider)
-            obj['providers'] = providers
-
-    return obj
-
-def load_cfg(infilename) -> list:
-    """
-    Loads the program configuration file from json.
-    """
-    if os.path.exists(infilename):
-        with open(infilename, 'r', encoding='utf-8') as infile:
-            cfg = json.load(infile, object_hook=json_load_objhook)
-    else:
-        cfg = DEFAULT_CFG
-    return cfg
-
-class ProviderJSONEncoder(json.JSONEncoder):
-    """
-    Subclass of JSONEncoder that supports writing dataclass instances as json
-    dicts.  Used in this application to save lists of Provider instances to
-    disk.
-    """
-    def default(self, o):
-        if isinstance(o, Provider):
-            return dataclasses.asdict(o)
-        return super().default(o)
-
-def save_cfg(outfilename, providers):
-    """
-    Write the program configuration file to disk in .json format.
-    """
-    cfg = {'providers': providers}
-    with open(outfilename, 'w', encoding='utf-8') as outfile:
-        json.dump(cfg, outfile, cls=ProviderJSONEncoder, indent=4)
-
-class TableModel(QAbstractListModel):
-    """
-    Model for the table view.  Holds a list of Provider instances.
-    """
-    def __init__(self, parent=None, providers=None):
-        super().__init__(parent=parent)
-        self.providers = [] if providers is None else providers
+    def __init__(self, parent=None, items:list|None=None, header:str=''):
+        super().__init__(parent)
+        self._data = items or []
+        self.header = header
 
     def headerData(self, section, orientation, role):
         """
-        Returns the header name
+        Returns the header name, which is always 'Provider'.
         """
         if (orientation == Qt.Horizontal) and (role == Qt.DisplayRole):
-            return "Provider"
+            return self.header
         return super().headerData(section, orientation, role)
 
-    def setData(self, idx, value, role=Qt.EditRole):
+    def setData(self, index, value, role=Qt.EditRole):
         """
         Sets model data at the specified index.
         Returns True of the value was successfully assigned.
         """
-        if not value:
-            # Don't allow setting name to ''
-            return False
-
-        if value in self.providers:
-            # Don't allow duplicates
-            return False
-
-        if role == Qt.EditRole:
-            # print('sd:', idx.row(), value)
-            # self.providers[idx.row()] = Provider(name=value)
-            self.providers[idx.row()].name=value
+        if index.isValid() and role == Qt.EditRole:
+            # It is assumed that all dicts in _data have a 'name' key
+            self._data[index.row()]['name'] = value
+            self.dataChanged.emit(index, index, [Qt.DisplayRole])
             return True
         return False
 
-    def data(self, idx, role=Qt.DisplayRole):
+    def data(self, index, role=Qt.DisplayRole):
         """
         Returns model data at the specified index.
         """
-        if role == Qt.DisplayRole:
-            return self.providers[idx.row()].name
+        if (not index.isValid()) or (role != Qt.DisplayRole):
+            return None
+        return self._data[index.row()]['name']
 
     def rowCount(self, _parent):
         """
         Returns the number of rows in the model.
         """
-        return len(self.providers)
+        return len(self._data)
 
-    def flags(self, idx):
+    def flags(self, index):
         """
         Returns flags for the model item at the specified index.  Needed in
         order to make treeview items editable.
         """
-        return Qt.ItemIsEditable | Qt.ItemIsSelectable | Qt.ItemIsEnabled
+        if not index.isValid():
+            return Qt.NoItemFlags
+        return Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemIsEditable
 
     def new(self):
         """
         Adds a new Provider instance to the list of providers in the model.
         """
         name = 'New Provider'
-        if name in [x.name for x in self.providers]:
+        if name in [x['name'] for x in self._data]:
             idx = 0
             while True:
                 num_name = f'{name} ({idx})'
-                if num_name not in [x.name for x in self.providers]:
+                if num_name not in [x['name'] for x in self._data]:
                     name = num_name
                     break
                 idx += 1
 
-        self.beginInsertRows(QModelIndex(), len(self.providers), len(self.providers))
-        self.providers.append(Provider(name=name))
+        self.beginInsertRows(QModelIndex(), len(self._data), len(self._data))
+        self._data.append({'name': name, 'provider_type': '', 'config': {}})
         self.endInsertRows()
 
-    def delete(self, idx):
+    def delete(self, index):
         """
         Removes the Provider instance from the model's list of providers at
         the specified index.
         """
-        self.beginRemoveRows(idx, idx.row(), idx.row())
-        self.providers.pop(idx.row())
+        self.beginRemoveRows(index, index.row(), index.row())
+        self._data.pop(index.row())
         self.endRemoveRows()
+
 
 class ProviderManager(QMainWindow):
     def __init__(self, parent=None):
@@ -168,10 +110,8 @@ class ProviderManager(QMainWindow):
         ui_filename = module_root.replace('.py', '.ui')
         load_ui(ui_filename, self)
 
-        cfg = load_cfg(CFG_FILENAME)
-
         # Model for tree view
-        self.table_model = TableModel(parent=self.tree_view, providers=cfg['providers'])
+        self.table_model = ListOfDictModel(parent=self.tree_view, header='Provider')
         # self.table_model.dataChanged.connect(self.data_changed)
         self.tree_view.setModel(self.table_model)
 
@@ -181,7 +121,7 @@ class ProviderManager(QMainWindow):
         self.tree_view.clicked.connect(self.row_clicked)
 
         # Button clicks
-        self.save_button.clicked.connect(self.save)
+        self.save_button.clicked.connect(self.save_clicked)
         self.new_button.clicked.connect(self.new_clicked)
         self.delete_button.clicked.connect(self.delete_clicked)
         self.test_button.clicked.connect(self.test_clicked)
@@ -189,57 +129,24 @@ class ProviderManager(QMainWindow):
         self.cancel_button.clicked.connect(self.cancel_clicked)
 
         self.tree_view.setCurrentIndex(self.table_model.createIndex(0, 0, None))
-        if self.table_model.providers:
-            self.copy_model_values_to_widgets()
+        # if self.table_model._data:
+        #     self.update_view()
+        self.update_view()
 
     def ok_clicked(self):
-        self.save()
+        self.save_clicked()
         self.hide()
 
     def cancel_clicked(self):
         self.hide()
 
-    def copy_widget_values_to_model(self):
+    def update_model(self):
         """Copies the values from the widgets into the active provider."""
-        idx = self.tree_view.currentIndex()
-        prov = self.table_model.providers[idx.row()]
 
-        prov.provider_type = self.type_combo.currentText()
-        prov.hostname = self.hostname_edit.text()
-        prov.port = self.port_spin.value()
-        prov.username = self.user_edit.text()
-        prov.password = self.password_edit.text()
-
-    def copy_model_values_to_widgets(self):
+    def update_view(self):
         """Copy the provider attributes into their respective widgets."""
-        idx = self.tree_view.currentIndex()
-        try:
-            prov = self.table_model.providers[idx.row()]
-        except IndexError:
-            # print(f"ERROR: No provider at idx {idx.row()}")
-            return
 
-        combo_idx = self.type_combo.findText(prov.provider_type)
-        if combo_idx == -1:
-            self.type_combo.setCurrentText(f'Unknown ({prov.provider_type})')
-            print(f"ERROR: Unknown provider type '{prov.provider_type}'")
-            return
-
-        self.type_combo.setCurrentIndex(combo_idx)
-        self.hostname_edit.setText(prov.hostname)
-        self.port_spin.setValue(prov.port)
-        self.user_edit.setText(prov.username)
-        self.password_edit.setText(prov.password)
-
-    def clear_widgets(self):
-        """Clears all widget values."""
-        self.type_combo.setCurrentIndex(0)
-        self.hostname_edit.setText('')
-        self.port_spin.setValue(0)
-        self.user_edit.setText('')
-        self.password_edit.setText('')
-
-    def save(self):
+    def save_clicked(self):
         """
         Called when the save button is clicked.
 
@@ -247,12 +154,11 @@ class ProviderManager(QMainWindow):
         model to disk.
         """
         # idx = self.tree_view.currentIndex()
-        if len(self.table_model.providers) == 0:
+        if self.table_model.rowCount(None) == 0:
             self.table_model.new()
-            self.tree_view.setCurrentIndex(self.table_model.createIndex(len(self.table_model.providers)-1, 0, None))
+            self.tree_view.setCurrentIndex(self.table_model.createIndex(self.table_model.rowCount(None)-1, 0, None))
 
-        self.copy_widget_values_to_model()
-        save_cfg(CFG_FILENAME, self.table_model.providers)
+        self.update_model()
 
     def row_clicked(self, idx):
         """
@@ -261,7 +167,7 @@ class ProviderManager(QMainWindow):
         Transfers values from the model into the settings tab for the selected
         row.
         """
-        self.copy_model_values_to_widgets()
+        self.update_view()
 
     # def data_changed(self, idx):
     #     """
@@ -299,8 +205,8 @@ class ProviderManager(QMainWindow):
         Highlights the new entry in the provider list.
         """
         self.table_model.new()
-        self.clear_widgets()
-        self.tree_view.setCurrentIndex(self.table_model.createIndex(len(self.table_model.providers)-1, 0, None))
+        # self.clear_widgets()
+        self.tree_view.setCurrentIndex(self.table_model.createIndex(self.table_model.rowCount(None)-1, 0, None))
 
     def delete_clicked(self):
         """
@@ -309,7 +215,7 @@ class ProviderManager(QMainWindow):
         Removes the currently selected row from the provider list.
         """
         idx = self.tree_view.currentIndex()
-        if idx.row() >= len(self.table_model.providers):
+        if idx.row() >= self.table_model.rowCount(None):
             # No row is selected, or no more items to delete.
             return
         self.table_model.delete(idx)
@@ -318,9 +224,9 @@ class ProviderManager(QMainWindow):
         # that the user can press the delete button repeatedly in order to
         # remove many items rapidly.
         idx = self.tree_view.currentIndex()
-        if idx.row() >= len(self.table_model.providers):
-            if len(self.table_model.providers) > 0:
-                self.tree_view.setCurrentIndex(self.table_model.createIndex(len(self.table_model.providers)-1, 0, None))
+        if idx.row() >= self.table_model.rowCount(None):
+            if self.table_model.rowCount(None) > 0:
+                self.tree_view.setCurrentIndex(self.table_model.createIndex(self.table_model.rowCount(None)-1, 0, None))
 
     def test_clicked(self):
         """
