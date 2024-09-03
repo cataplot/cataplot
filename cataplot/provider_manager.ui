@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>646</width>
-    <height>604</height>
+    <width>726</width>
+    <height>636</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -42,7 +42,7 @@
         <item>
          <spacer name="horizontalSpacer">
           <property name="orientation">
-           <enum>Qt::Horizontal</enum>
+           <enum>Qt::Orientation::Horizontal</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
@@ -64,7 +64,7 @@
      </layout>
     </item>
     <item>
-     <layout class="QVBoxLayout" name="verticalLayout">
+     <layout class="QVBoxLayout" name="verticalLayout_3">
       <item>
        <widget class="QTabWidget" name="tabWidget">
         <property name="currentIndex">
@@ -72,15 +72,55 @@
         </property>
         <widget class="QWidget" name="settings_tab">
          <attribute name="title">
-          <string>Settings</string>
+          <string>Provider Settings</string>
          </attribute>
          <layout class="QHBoxLayout" name="horizontalLayout_2">
           <item>
-           <layout class="QGridLayout" name="settings_grid">
-            <item row="6" column="0">
+           <layout class="QVBoxLayout" name="verticalLayout">
+            <item>
+             <layout class="QGridLayout" name="topGridLayout">
+              <item row="1" column="1">
+               <widget class="QComboBox" name="type_combo">
+                <item>
+                 <property name="text">
+                  <string/>
+                 </property>
+                </item>
+               </widget>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="port_label">
+                <property name="text">
+                 <string>Configuration:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="name_edit"/>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="type_label">
+                <property name="text">
+                 <string>Type:</string>
+                </property>
+               </widget>
+              </item>
+              <item row="0" column="0">
+               <widget class="QLabel" name="name_label">
+                <property name="text">
+                 <string>Name:</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QGridLayout" name="botGridLayout" columnstretch="0"/>
+            </item>
+            <item>
              <spacer name="verticalSpacer">
               <property name="orientation">
-               <enum>Qt::Vertical</enum>
+               <enum>Qt::Orientation::Vertical</enum>
               </property>
               <property name="sizeHint" stdset="0">
                <size>
@@ -89,88 +129,6 @@
                </size>
               </property>
              </spacer>
-            </item>
-            <item row="3" column="0">
-             <widget class="QLabel" name="user_label">
-              <property name="text">
-               <string>User:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="0">
-             <widget class="QLabel" name="type_label">
-              <property name="text">
-               <string>Provider type:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="host_label">
-              <property name="text">
-               <string>Hostname / IP:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="1">
-             <widget class="QLineEdit" name="password_edit">
-              <property name="echoMode">
-               <enum>QLineEdit::PasswordEchoOnEdit</enum>
-              </property>
-             </widget>
-            </item>
-            <item row="4" column="0">
-             <widget class="QLabel" name="password_label">
-              <property name="text">
-               <string>Password:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="port_label">
-              <property name="text">
-               <string>Port:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="1">
-             <widget class="QLineEdit" name="hostname_edit"/>
-            </item>
-            <item row="0" column="1">
-             <widget class="QComboBox" name="type_combo">
-              <item>
-               <property name="text">
-                <string/>
-               </property>
-              </item>
-              <item>
-               <property name="text">
-                <string>Demo Provider</string>
-               </property>
-              </item>
-             </widget>
-            </item>
-            <item row="2" column="1">
-             <widget class="QSpinBox" name="port_spin">
-              <property name="maximum">
-               <number>65535</number>
-              </property>
-              <property name="value">
-               <number>3306</number>
-              </property>
-             </widget>
-            </item>
-            <item row="3" column="1">
-             <widget class="QLineEdit" name="user_edit"/>
-            </item>
-            <item row="5" column="0">
-             <widget class="QLabel" name="result_label">
-              <property name="text">
-               <string>Test result:</string>
-              </property>
-             </widget>
-            </item>
-            <item row="5" column="1">
-             <widget class="QPlainTextEdit" name="result_edit"/>
             </item>
            </layout>
           </item>
@@ -183,7 +141,7 @@
         <item>
          <spacer name="horizontalSpacer_2">
           <property name="orientation">
-           <enum>Qt::Horizontal</enum>
+           <enum>Qt::Orientation::Horizontal</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
@@ -238,10 +196,7 @@
  <tabstops>
   <tabstop>tree_view</tabstop>
   <tabstop>type_combo</tabstop>
-  <tabstop>hostname_edit</tabstop>
-  <tabstop>port_spin</tabstop>
-  <tabstop>user_edit</tabstop>
-  <tabstop>password_edit</tabstop>
+  <tabstop>name_edit</tabstop>
   <tabstop>ok_button</tabstop>
   <tabstop>cancel_button</tabstop>
   <tabstop>test_button</tabstop>
@@ -249,7 +204,6 @@
   <tabstop>new_button</tabstop>
   <tabstop>delete_button</tabstop>
   <tabstop>tabWidget</tabstop>
-  <tabstop>result_edit</tabstop>
  </tabstops>
  <resources/>
  <connections/>
