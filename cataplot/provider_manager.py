@@ -101,6 +101,14 @@ class ListOfDictModel(QAbstractListModel):
         self._data.pop(index.row())
         self.endRemoveRows()
 
+def get_centered_position(parent_window: QMainWindow, child_window: QMainWindow):
+    """
+    Returns the x, y coordinates to center the child window relative to the
+    parent window.
+    """
+    x = parent_window.x() + (parent_window.width() - child_window.width()) / 2
+    y = parent_window.y() + (parent_window.height() - child_window.height()) / 2
+    return x, y
 
 class ProviderManager(QMainWindow):
     def __init__(self, parent=None):
@@ -132,6 +140,15 @@ class ProviderManager(QMainWindow):
         # if self.table_model._data:
         #     self.update_view()
         self.update_view()
+
+    def show(self):
+        """
+        Same as QMainWindow.show() but centers the window on the parent window.
+        """
+        if self.parent():
+            x, y = get_centered_position(self.parent(), self)
+            self.move(x, y)
+        super().show()
 
     def ok_clicked(self):
         self.save_clicked()

@@ -92,18 +92,15 @@ class MainWindow(QMainWindow):
         self.con_mgr_action.triggered.connect(self.handle_con_mgr_action)
 
     def handle_con_mgr_action(self):
+        """Shows the provider manager window when the action is triggered."""
         self.provider_manager.show()
 
     def add_provider(self, provider):
-        """
-        Adds a provider to the list of available data providers.
-        """
+        """Adds a provider to the list of available data providers."""
         self.providers.append(provider)
 
     def get_providers(self):
-        """
-        Returns a list of available data providers.
-        """
+        """Returns a list of available data providers."""
         return self.providers
 
     def eventFilter(self, obj, event):
