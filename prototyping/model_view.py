@@ -53,6 +53,7 @@ class TreeModel(QStandardItemModel):
     def add_plot(self, name):
         """Add a new plot entry to the tree."""
         plot_item = QStandardItem(name)
+        plot_item.setEditable(True)  # Allow the plot name to be edited
         self.appendRow(plot_item)
         return plot_item
 
@@ -90,6 +91,25 @@ class MainWindow(QMainWindow):
 
         # Connect the tree view to handle selections
         self.tree_view.selectionModel().currentChanged.connect(self.on_tree_selection_changed)
+
+        # Enable double-click to edit the plot names in place
+        self.tree_view.setEditTriggers(QTreeView.DoubleClicked | QTreeView.EditKeyPressed)
+
+        self.model.dataChanged.connect(self.on_item_changed)
+
+    def on_item_changed(self, top_left: QModelIndex, bottom_right: QModelIndex):
+        """Update the pyqtgraph plot title when an item in the tree view is renamed."""
+        item = self.model.itemFromIndex(top_left)
+        
+        # Check if the item is a plot (parent is None)
+        if item and item.parent() is None:
+            plot_index = top_left.row()  # Get the index of the plot
+            new_plot_name = item.text()  # Get the new plot name
+            
+            # Update the corresponding plot's title in the PlotManager
+            plot_widget = self.plot_manager.plots[plot_index]
+            plot_widget.setTitle(new_plot_name)
+
 
     def initialize_plots(self):
         """Create some initial plots and curves."""
@@ -146,11 +166,12 @@ class MainWindow(QMainWindow):
             self.plot_manager.add_plot(plot_name)
 
     def rename_plot(self, plot_item):
-        """Rename an existing plot."""
-        plot_name, ok = QInputDialog.getText(self, "Rename Plot", "Enter new plot name:", text=plot_item.text())
-        if ok and plot_name:
-            plot_item.setText(plot_name)
-            # Optionally, you can also rename the actual plot in the plot manager if needed
+        """Rename an existing plot by entering inline edit mode."""
+        # Get the QModelIndex for the plot item
+        index = self.model.indexFromItem(plot_item)
+        
+        # Programmatically trigger edit mode in the QTreeView
+        self.tree_view.edit(index)
 
     def delete_plot(self, plot_item):
         """Delete a plot from the model and the plot manager."""
@@ -170,7 +191,7 @@ if __name__ == "__main__":
     
     # Create and show the main window
     window = MainWindow()
-    window.setWindowTitle("Time-Series Plotting Application with Context Menu")
+    window.setWindowTitle("Time-Series Plotting Application with Inline Editing")
     window.resize(1000, 600)
     window.show()
     
