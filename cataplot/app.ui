@@ -18,18 +18,13 @@
     <item>
      <widget class="QSplitter" name="splitter">
       <property name="orientation">
-       <enum>Qt::Horizontal</enum>
+       <enum>Qt::Orientation::Horizontal</enum>
       </property>
-      <widget class="TreeView" name="treeView"/>
-      <widget class="QTabWidget" name="tabWidget">
+      <widget class="TreeView" name="tree_view"/>
+      <widget class="QTabWidget" name="tab_widget">
        <property name="currentIndex">
-        <number>0</number>
+        <number>-1</number>
        </property>
-       <widget class="QWidget" name="tab">
-        <attribute name="title">
-         <string>Tab 1</string>
-        </attribute>
-       </widget>
       </widget>
      </widget>
     </item>
