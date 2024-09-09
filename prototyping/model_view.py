@@ -60,6 +60,7 @@ class TreeModel(QStandardItemModel):
     def add_curve(self, plot_item, curve_name):
         """Add a curve under the plot entry."""
         curve_item = QStandardItem(curve_name)
+        curve_item.setEditable(False)  # Curves are not editable
         plot_item.appendRow(curve_item)
 
 class MainWindow(QMainWindow):
@@ -145,13 +146,19 @@ class MainWindow(QMainWindow):
         # Create the context menu
         context_menu = QMenu(self)
 
-        # Option to add a new plot
-        context_menu.addAction("Add Plot", self.add_plot)
+        if not selected_item or selected_item.parent() is None:
+            # If the selected item is not a curve...
+            context_menu.addAction("&Add Plot", self.add_plot)
 
-        # Options to rename or delete a plot if an item is selected
-        if selected_item and selected_item.parent() is None:  # If a plot is selected
-            context_menu.addAction("Rename Plot", lambda: self.rename_plot(selected_item))
-            context_menu.addAction("Delete Plot", lambda: self.delete_plot(selected_item))
+        if selected_item and selected_item.parent() is None:
+            # If a plot is selected...
+            context_menu.addAction("&Rename Plot", lambda: self.rename_plot(selected_item))
+            context_menu.addAction("&Delete Plot", lambda: self.delete_plot(selected_item))
+
+        if selected_item and selected_item.parent() is not None:
+            # If the selected item is a curve...
+            context_menu.addAction("&Delete Curve")
+            context_menu.addAction("P&roperties")
 
         # Open the context menu
         context_menu.exec(self.tree_view.viewport().mapToGlobal(position))
