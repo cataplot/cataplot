@@ -227,6 +227,7 @@ class MainWindow(QMainWindow):
             # If a plot is selected...
             context_menu.addAction("&Rename Plot", lambda: self.rename_plot(selected_item))
             context_menu.addAction("&Delete Plot", lambda: self.delete_plot(selected_item))
+            context_menu.addAction("&Properties")
 
         if selected_item and selected_item.parent() is not None:
             # If the selected item is a curve...
