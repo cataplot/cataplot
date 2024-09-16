@@ -59,6 +59,39 @@ class TreeModel(QStandardItemModel):
             item.setEditable(True)  # Enable editing of tab names
             self.appendRow(item)
 
+class TreeView(QTreeView):
+    def __init__(self, main_window):
+        super().__init__()
+        self.main_window = main_window
+
+    def contextMenuEvent(self, event):
+        """Handle right-click context menu for the tree view."""
+        index = self.indexAt(event.pos())
+
+        menu = QMenu(self)
+
+        # Add "Add Tab" action
+        add_action = QAction("&Add Tab", self)
+        add_action.triggered.connect(self.main_window.add_tab)
+        menu.addAction(add_action)
+
+        # If a valid index is clicked, show "Delete" and "Rename"
+        if index.isValid():
+            tab_index = index.row()
+
+            # Add "Delete Tab" action
+            delete_action = QAction("&Delete Tab", self)
+            delete_action.triggered.connect(lambda: self.main_window.delete_tab(tab_index))
+            menu.addAction(delete_action)
+
+            # Add "Rename Tab" action
+            rename_action = QAction("&Rename Tab", self)
+            rename_action.triggered.connect(lambda: self.main_window.rename_tab(tab_index))
+            menu.addAction(rename_action)
+
+        # Show the context menu at the cursor position
+        menu.exec(event.globalPos())
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -72,7 +105,7 @@ class MainWindow(QMainWindow):
         splitter.setOrientation(Qt.Horizontal)
 
         # Create a QTreeView on the left
-        self.tree_view = QTreeView()
+        self.tree_view = TreeView(self)
         self.tree_view.setHeaderHidden(True)  # Hide the header for simplicity
         splitter.addWidget(self.tree_view)
 
@@ -201,19 +234,19 @@ class TabWidget(QTabWidget):
         menu = QMenu(self)
 
         # Add "Add Tab" action
-        add_action = QAction("Add Tab", self)
+        add_action = QAction("&Add Tab", self)
         add_action.triggered.connect(self.main_window.add_tab)
         menu.addAction(add_action)
 
         # Add "Delete Tab" action (only if there are more than one tab)
         if tab_index != -1:
-            delete_action = QAction("Delete Tab", self)
+            delete_action = QAction("&Delete Tab", self)
             delete_action.triggered.connect(lambda: self.main_window.delete_tab(tab_index))
             menu.addAction(delete_action)
 
         # Add "Rename Tab" action (only if a valid tab is clicked)
         if tab_index != -1:
-            rename_action = QAction("Rename Tab", self)
+            rename_action = QAction("&Rename Tab", self)
             rename_action.triggered.connect(lambda: self.edit_tab_name(tab_index))
             menu.addAction(rename_action)
 
