@@ -39,7 +39,7 @@ import sys
 # pylint: disable=no-name-in-module
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QSplitter, QTreeView, QTabWidget,
-    QWidget, QVBoxLayout, QLabel, QMenu
+    QWidget, QVBoxLayout, QLabel, QMenu, QAbstractItemView
 )
 from PySide6.QtGui import QStandardItemModel, QStandardItem, QAction
 from PySide6.QtCore import Qt
@@ -58,7 +58,6 @@ class TreeModel(QStandardItemModel):
             item = QStandardItem(tab_name)
             item.setEditable(True)  # Enable editing of tab names
             self.appendRow(item)
-
 class TreeView(QTreeView):
     def __init__(self, main_window):
         super().__init__()
@@ -66,8 +65,7 @@ class TreeView(QTreeView):
 
     def contextMenuEvent(self, event):
         """Handle right-click context menu for the tree view."""
-        index = self.indexAt(event.pos())
-
+        selected_indexes = self.selectionModel().selectedRows()  # Get all selected rows
         menu = QMenu(self)
 
         # Add "Add Tab" action
@@ -75,22 +73,37 @@ class TreeView(QTreeView):
         add_action.triggered.connect(self.main_window.add_tab)
         menu.addAction(add_action)
 
-        # If a valid index is clicked, show "Delete" and "Rename"
-        if index.isValid():
-            tab_index = index.row()
-
-            # Add "Delete Tab" action
-            delete_action = QAction("&Delete Tab", self)
-            delete_action.triggered.connect(lambda: self.main_window.delete_tab(tab_index))
+        if selected_indexes:  # If there are selected items
+            # Add "Delete Tab" action (deletes all selected items)
+            plural = "s" if len(selected_indexes) > 1 else ""
+            delete_action = QAction(f"&Delete Tab{plural}", self)
+            delete_action.triggered.connect(lambda: self.delete_selected_tabs(selected_indexes))
             menu.addAction(delete_action)
 
-            # Add "Rename Tab" action
-            rename_action = QAction("&Rename Tab", self)
-            rename_action.triggered.connect(lambda: self.main_window.rename_tab(tab_index))
-            menu.addAction(rename_action)
+            # Add "Rename Tab" action (only enabled if one tab is selected)
+            if len(selected_indexes) == 1:
+                rename_action = QAction("&Rename Tab", self)
+                tab_index = selected_indexes[0].row()
+                rename_action.triggered.connect(lambda: self.main_window.rename_tab(tab_index))
+                menu.addAction(rename_action)
+            
+            # Add "Properties" action (only enabled if all selected items are
+            # tabs)
+            if all(self.main_window.tabs[index.row()] for index in selected_indexes):
+                properties_action = QAction("&Properties", self)
+                properties_action.triggered.connect(lambda: self.main_window.show_properties(selected_indexes))
+                menu.addAction(properties_action)
 
         # Show the context menu at the cursor position
         menu.exec(event.globalPos())
+
+    def delete_selected_tabs(self, selected_indexes):
+        """Delete all selected tabs."""
+        selected_rows = [index.row() for index in selected_indexes]
+        selected_rows.sort(reverse=True)  # Delete from the end to maintain index consistency
+
+        for row in selected_rows:
+            self.main_window.delete_tab(row)
 
 
 class MainWindow(QMainWindow):
@@ -107,6 +120,8 @@ class MainWindow(QMainWindow):
         # Create a QTreeView on the left
         self.tree_view = TreeView(self)
         self.tree_view.setHeaderHidden(True)  # Hide the header for simplicity
+        # Set selection mode to allow multiple selections
+        self.tree_view.setSelectionMode(QAbstractItemView.ExtendedSelection)
         splitter.addWidget(self.tree_view)
 
         # Create a QTabWidget on the right
@@ -131,6 +146,12 @@ class MainWindow(QMainWindow):
 
         # Connect the tree model to track when the user edits a tab name
         self.tree_model.itemChanged.connect(self.on_item_changed)
+
+    def show_properties(self, selected_indexes):
+        """Show properties for the selected tabs."""
+        tab_names = [index.data() for index in selected_indexes]
+        print(f"Showing properties for tabs: {', '.join(tab_names)}")
+        # Implement the properties dialog here
 
     def move_tab(self, from_index, to_index):
         """Reorders the tabs and updates the tree view accordingly."""
